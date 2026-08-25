@@ -18,8 +18,8 @@
     },
     "preview": {
       "distribution": "internal",
-      "image": "sdk-54",
       "android": {
+        "image": "sdk-54",
         "buildType": "apk"
       },
       "ios": {
