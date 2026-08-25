@@ -1,3 +1,14 @@
+// EAS's Android builder can run Node 18, which predates Array#toReversed.
+// Metro uses this method while merging its default config.
+if (!Array.prototype.toReversed) {
+  Object.defineProperty(Array.prototype, 'toReversed', {
+    configurable: true,
+    value: function () {
+      return Array.from(this).reverse();
+    },
+  });
+}
+
 const { getDefaultConfig } = require('expo/metro-config');
 const path = require('path');
 const fs = require('fs');
