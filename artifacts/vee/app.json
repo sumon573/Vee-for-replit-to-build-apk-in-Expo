@@ -114,12 +114,9 @@
       "router": {
         "origin": "https://vee.app"
       },
-      "eas": {}
-    }
-  },
-  "extra": {
-    "eas": {
-      "projectId": "79dd6054-7cff-4005-ad7a-38a71c8089f4"
+      "eas": {
+        "projectId": "79dd6054-7cff-4005-ad7a-38a71c8089f4"
+      }
     }
   }
 }
