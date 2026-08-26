@@ -31,6 +31,17 @@ export type VeeUser = {
   roomsHosted?: number;
   oneSignalId?: string;     // OneSignal push subscription ID
   hasActiveStory?: boolean;
+  /** Admin-controlled account status fields. */
+  banned?: boolean;
+  banReason?: string;
+  bannedAt?: number;
+  bannedBy?: string;
+  /**
+   * Legacy/admin dashboard diamond balance path.
+   * The wallet service also listens to this field so dashboard changes are
+   * reflected immediately in clients that have an existing wallets record.
+   */
+  diamonds?: number;
   /**
    * Cloudinary public_id of the current profile photo.
    * Stored so a future server-side Cloud Function can delete the old asset
@@ -76,7 +87,17 @@ export async function getUser(uid: string): Promise<VeeUser | null> {
 /** Update specific fields of a user's profile */
 export async function updateUser(
   uid: string,
-  data: Partial<Omit<VeeUser, 'uid' | 'vId' | 'createdAt'>>,
+  data: Partial<Omit<
+    VeeUser,
+    | 'uid'
+    | 'vId'
+    | 'createdAt'
+    | 'banned'
+    | 'banReason'
+    | 'bannedAt'
+    | 'bannedBy'
+    | 'diamonds'
+  >>,
 ): Promise<void> {
   await update(ref(database, `users/${uid}`), data);
 }
