@@ -13,7 +13,10 @@
       ".indexOn": ["vId", "online"],
       "$uid": {
         ".read": "auth != null",
-        ".write": "auth != null && auth.uid === $uid",
+        // Admin-managed fields must remain unchanged for owner writes. This
+        // parent check is necessary because a parent .write grant otherwise
+        // cascades to every child and bypasses child-level restrictions.
+        ".write": "auth != null && (auth.token.role === 'superAdmin' || auth.token.role === 'admin' || (auth.uid === $uid && newData.child('banned').val() === data.child('banned').val() && newData.child('banReason').val() === data.child('banReason').val() && newData.child('bannedAt').val() === data.child('bannedAt').val() && newData.child('bannedBy').val() === data.child('bannedBy').val() && newData.child('diamonds').val() === data.child('diamonds').val()))",
         "vId": {
           ".validate": "!data.exists() || data.val() === newData.val()"
         },
