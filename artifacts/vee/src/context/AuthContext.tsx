@@ -12,10 +12,12 @@
 import React, {
   createContext, useContext, useEffect, useRef, useState, useCallback,
 } from 'react';
+import { Alert } from 'react-native';
 import { User } from 'firebase/auth';
 import { onUserStateChanged, logout as firebaseLogout } from '../services/authService';
 import {
-  setupPresence, setUserOffline, getUser, setUserVId, generateAndReserveVId,
+  setupPresence, setUserOffline, getUser, subscribeUser, setUserVId,
+  generateAndReserveVId,
 } from '../services/userService';
 import generateVId from '../utils/generateVId';
 
@@ -105,6 +107,52 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       unsubscribe?.();
     };
   }, []);
+
+  /**
+   * Admin dashboard account-status listener.
+   *
+   * The dashboard writes users/{uid}/banned. Previously the app never read
+   * that field, so a ban looked successful in RTDB but had no effect on a
+   * signed-in device. Keep this listener at the auth root so it remains
+   * active regardless of which screen is open.
+   */
+  const handledBanUidRef = useRef<string | null>(null);
+  useEffect(() => {
+    const uid = user?.uid;
+    if (!uid) {
+      handledBanUidRef.current = null;
+      return;
+    }
+
+    return subscribeUser(uid, (profile) => {
+      if (!profile?.banned) {
+        if (handledBanUidRef.current === uid) {
+          handledBanUidRef.current = null;
+        }
+        return;
+      }
+
+      // RTDB can replay the current value and emit multiple updates. Only
+      // show one blocking notice for this ban event.
+      if (handledBanUidRef.current === uid) return;
+      handledBanUidRef.current = uid;
+
+      const reason = profile.banReason?.trim();
+      Alert.alert(
+        'Account suspended',
+        reason
+          ? `Your Vee account has been suspended.\n\nReason: ${reason}`
+          : 'Your Vee account has been suspended by an administrator.',
+        [{
+          text: 'OK',
+          onPress: () => {
+            firebaseLogout().catch(() => {});
+          },
+        }],
+        { cancelable: false },
+      );
+    });
+  }, [user?.uid]);
 
   const logout = useCallback(async () => {
     if (user) {
