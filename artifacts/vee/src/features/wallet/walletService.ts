@@ -74,8 +74,22 @@ export async function initializeWallet(uid: string): Promise<void> {
 
 /** One-shot read of the current diamond balance. */
 export async function getWalletBalance(uid: string): Promise<number> {
-  const snap = await get(ref(database, `wallets/${uid}/balance`));
-  return snap.exists() ? (snap.val() as number) : 0;
+  const [walletSnap, adminSnap] = await Promise.all([
+    get(ref(database, `wallets/${uid}/balance`)),
+    get(ref(database, `users/${uid}/diamonds`)),
+  ]);
+
+  // The admin dashboard currently manages users/{uid}/diamonds. Prefer that
+  // value whenever it exists, while retaining wallets/{uid}/balance for the
+  // server-managed wallet and older accounts.
+  const adminBalance = adminSnap.exists() ? adminSnap.val() : null;
+  if (typeof adminBalance === 'number' && Number.isFinite(adminBalance) && adminBalance >= 0) {
+    return adminBalance;
+  }
+
+  return walletSnap.exists() && typeof walletSnap.val() === 'number'
+    ? (walletSnap.val() as number)
+    : 0;
 }
 
 /**
@@ -89,20 +103,77 @@ export function subscribeWalletBalance(
   callback: (balance: number) => void,
 ): () => void {
   const balRef = ref(database, `wallets/${uid}/balance`);
-  const unsub = onValue(
+  const adminBalRef = ref(database, `users/${uid}/diamonds`);
+  let walletBalance: number | null = null;
+  let adminBalance: number | null = null;
+  let walletLoaded = false;
+  let adminLoaded = false;
+  let initRequested = false;
+
+  const emitBalance = () => {
+    // Wait for both initial snapshots before choosing a source. Otherwise a
+    // fast wallets snapshot could briefly show 500/current balance before the
+    // admin-managed users/{uid}/diamonds value arrives.
+    if (!walletLoaded || !adminLoaded) return;
+
+    if (adminBalance !== null) {
+      callback(adminBalance);
+      return;
+    }
+    if (walletBalance !== null) {
+      callback(walletBalance);
+      return;
+    }
+
+    // No record exists in either path. Preserve the existing lazy-init
+    // behavior, but never initialise over an admin balance.
+    callback(500);
+    if (!initRequested) {
+      initRequested = true;
+      initializeWallet(uid).catch(() => {});
+    }
+  };
+
+  const unsubWallet = onValue(
     balRef,
     async (snap) => {
-      if (!snap.exists()) {
-        // Lazy-init: give 500 diamonds on first touch (server-side).
-        await initializeWallet(uid).catch(() => {});
-        callback(500);
-      } else {
-        callback(snap.val() as number);
-      }
+      walletLoaded = true;
+      const value = snap.val();
+      walletBalance = typeof value === 'number' && Number.isFinite(value) && value >= 0
+        ? value
+        : null;
+      emitBalance();
     },
-    () => callback(0),
+    () => {
+      walletLoaded = true;
+      walletBalance = null;
+      emitBalance();
+    },
   );
-  return unsub;
+
+  const unsubAdmin = onValue(
+    adminBalRef,
+    (snap) => {
+      adminLoaded = true;
+      const value = snap.val();
+      adminBalance = typeof value === 'number' && Number.isFinite(value) && value >= 0
+        ? value
+        : null;
+      emitBalance();
+    },
+    () => {
+      // A permission/network error on the optional compatibility path must
+      // not hide the server-managed wallet balance.
+      adminLoaded = true;
+      adminBalance = null;
+      emitBalance();
+    },
+  );
+
+  return () => {
+    unsubWallet();
+    unsubAdmin();
+  };
 }
 
 /**
